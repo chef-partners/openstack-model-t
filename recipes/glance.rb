@@ -39,9 +39,9 @@ bash "create glance service and api endpoint" do
   code <<-EOH
     STATUS=0
     source passwords2dostuff || STATUS=1
-    openstack service create --name glance --description "OpenStack Image service" image
-    openstack endpoint create --publicurl http://#{node[:openstack_model_t][:controller_ip]}:9292 --internalurl http://#{node[:openstack_model_t][:controller_ip]}:9292 --adminurl http://#{node[:openstack_model_t][:controller_ip]}:9292 --region RegionOne  image
-    touch /root/model-t-setup/created-glance-service-and-api
+    openstack service create --name glance --description "OpenStack Image service" image || STATUS=1
+    openstack endpoint create --region RegionOne image --publicurl  http://#{node[:openstack_model_t][:controller_ip]}:9292 --internalurl  http://#{node[:openstack_model_t][:controller_ip]}:9292 --adminurl http://#{node[:openstack_model_t][:controller_ip]}:9292
+    touch /root/model-t-setup/created-glance-service-and-api || STATUS=1
     exit $STATUS
   EOH
 end
@@ -117,7 +117,7 @@ end
 
 # Congrats! You now have a working glance server/system/whatever
 # You should probably verify it go to here:
-# http://docs.openstack.org/kilo/install-guide/install/apt/content/glance-verify.html
+# http://docs.openstack.org/liberty/install-guide-ubuntu/glance-verify.html
 # or if you're lazy
 #
 # source admin-openrc.sh

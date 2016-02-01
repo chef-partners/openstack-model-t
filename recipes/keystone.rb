@@ -48,7 +48,7 @@ template "/etc/keystone/keystone.conf" do
   owner "keystone"
   group "keystone"
   mode "0644"
-  notifies :restart, 'service[apache2]', :delayed
+  notifies :restart, 'service[apache2]', :immediately
 end
 
 execute "make sure keystone owns it's etc directory" do
@@ -62,7 +62,7 @@ template "/etc/apache2/sites-available/wsgi-keystone.conf" do
   owner "root"
   group "root"
   mode "0644"
-  notifies :restart, 'service[apache2]', :delayed
+  notifies :restart, 'service[apache2]', :immediately
 end
 
 template "/etc/apache2/apache2.conf" do
@@ -70,7 +70,7 @@ template "/etc/apache2/apache2.conf" do
   owner "root"
   group "root"
   mode "0644"
-  notifies :restart, 'service[apache2]', :delayed
+  notifies :restart, 'service[apache2]', :immediately
 end
 
 bash "run keystone-mange db_sync" do
@@ -89,48 +89,13 @@ link '/etc/apache2/sites-enabled/wsgi-keystone.conf' do
   to '/etc/apache2/sites-available/wsgi-keystone.conf'
 end
 
-%w[ /var/www/cgi-bin /var/www/cgi-bin/keystone ].each do |path|
-  directory path do
-    owner 'keystone'
-    group 'keystone'
-    mode '0755'
-    notifies :restart, 'service[apache2]', :delayed
-  end
-end
-
-remote_file '/var/www/cgi-bin/keystone/main' do
-  source "http://git.openstack.org/cgit/openstack/keystone/plain/httpd/keystone.py?h=stable/#{node[:openstack_model_t][:release]}"
-  mode '0644'
-  notifies :restart, 'service[apache2]', :delayed
-end
-
-remote_file '/var/www/cgi-bin/keystone/admin' do
-  source "http://git.openstack.org/cgit/openstack/keystone/plain/httpd/keystone.py?h=stable/#{node[:openstack_model_t][:release]}"
-  mode '0644'
-  notifies :restart, 'service[apache2]', :delayed
-end
-
-bash "change ownership for keystone" do
-  user "root"
-  cwd "/tmp"
-  creates "/var/www/cgi-bin/.ownership4keystone"
-  notifies :restart, 'service[apache2]', :immediately
-  code <<-EOH
-    STATUS=0
-    chown -R keystone:keystone /var/www/cgi-bin/keystone || STATUS=1
-    chmod 755 /var/www/cgi-bin/keystone/* || STATUS=1
-    touch /var/www/cgi-bin/.ownership4keystone
-    exit $STATUS
-  EOH
-end
-
 file '/var/lib/keystone/keystone.db' do
   action :delete
 end
 
 service 'apache2' do
   supports :restart => true, :reload => true
-  action :enable
+  action :restart
 end
 
 bash "create keystone service entity" do
@@ -139,22 +104,20 @@ bash "create keystone service entity" do
   creates "/root/model-t-setup/created-keystone-service-entity"
   code <<-EOH
     STATUS=0
-    source passwords2dostuff || STATUS=1
-    openstack service create --name keystone --description "OpenStack Identity" identity || STATUS=1
+    source passwords2dostuff ; openstack service create --name keystone --description "OpenStack Identity" identity --debug || STATUS=1
     touch /root/model-t-setup/created-keystone-service-entity || STATUS=1
     exit $STATUS
   EOH
 end
 
-bash "create keystone api endpoint" do
+bash "create keystone public api endpoint" do
   user "root"
   cwd "/root"
-  creates "/root/model-t-setup/created-keystone-api-endpoint"
+  creates "/root/model-t-setup/created-keystone-public-api-endpoint"
   code <<-EOH
     STATUS=0
-    source passwords2dostuff || STATUS=1
-    openstack endpoint create --publicurl http://#{node[:openstack_model_t][:controller_ip]}:5000/v2.0 --internalurl http://#{node[:openstack_model_t][:controller_ip]}:5000/v2.0 --adminurl http://#{node[:openstack_model_t][:controller_ip]}:35357/v2.0 --region RegionOne identity || STATUS=1
-    touch /root/model-t-setup/created-keystone-api-endpoint || STATUS=1
+    source passwords2dostuff ; openstack endpoint create --region RegionOne identity --publicurl http://#{node[:openstack_model_t][:controller_ip]}:5000/v2.0 --internalurl http://#{node[:openstack_model_t][:controller_ip]}:5000/v2.0 --adminurl http://#{node[:openstack_model_t][:controller_ip]}:35357/v2.0 || STATUS=1
+    touch /root/model-t-setup/created-keystone-public-api-endpoint || STATUS=1
     exit $STATUS
   EOH
 end
@@ -165,11 +128,10 @@ bash "create admin project, user and role" do
   creates "/root/model-t-setup/created-admin-project-user-role"
   code <<-EOH
     STATUS=0
-    source passwords2dostuff || STATUS=1
-    openstack project create --description "Admin Project" admin || STATUS=1
-    openstack user create --password #{node[:openstack_model_t][:ADMIN_PASS]} admin || STATUS=1
-    openstack role create admin || STATUS=1
-    openstack role add --project admin --user admin admin || STATUS=1
+    source passwords2dostuff ;     openstack project create --description "Admin Project" admin || STATUS=1
+    source passwords2dostuff ;     openstack user create  --password #{node[:openstack_model_t][:ADMIN_PASS]} admin || STATUS=1
+    source passwords2dostuff ;     openstack role create admin || STATUS=1
+    source passwords2dostuff ;     openstack role add --project admin --user admin admin || STATUS=1
     touch /root/model-t-setup/created-admin-project-user-role || STATUS=1
     exit $STATUS
   EOH
@@ -181,9 +143,8 @@ bash "create service and demo projects" do
   creates "/root/model-t-setup/created-service-and-demo-projects"
   code <<-EOH
     STATUS=0
-    source passwords2dostuff || STATUS=1
-    openstack project create --description "Service Project" service || STATUS=1
-    openstack project create --description "Demo Project" demo || STATUS=1
+    source passwords2dostuff ;     openstack project create --description "Service Project" service || STATUS=1
+    source passwords2dostuff ;     openstack project create --description "Demo Project" demo || STATUS=1
     touch /root/model-t-setup/created-service-and-demo-projects || STATUS=1
     exit $STATUS
   EOH
@@ -195,9 +156,8 @@ bash "create demo user" do
   creates "/root/model-t-setup/created-demo-user"
   code <<-EOH
     STATUS=0
-    source passwords2dostuff || STATUS=1
-    openstack user create --password #{node[:openstack_model_t][:DEMO_PASS]} demo || STATUS=1
-    openstack role create user || STATUS=1
+    source passwords2dostuff ;     openstack user create --password #{node[:openstack_model_t][:DEMO_PASS]} demo || STATUS=1
+    source passwords2dostuff ;     openstack role create user || STATUS=1
     openstack role add --project demo --user demo user || STATUS=1
     touch /root/model-t-setup/created-demo-user || STATUS=1
     exit $STATUS
@@ -208,4 +168,4 @@ end
 # You should bring up the following website and verify it to prove to yourself that
 # keystone is setup correctly.
 # Go forth and conquer!
-# http://docs.openstack.org/kilo/install-guide/install/apt/content/keystone-verify.html
+# http://docs.openstack.org/liberty/install-guide-ubuntu/keystone-verify.html
